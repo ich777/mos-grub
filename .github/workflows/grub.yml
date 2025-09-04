@@ -25,8 +25,11 @@ jobs:
         GRUB_V=$(git ls-remote --tags https://git.savannah.gnu.org/git/grub.git | awk -F/ '{print $3}' | grep -Ev 'rc|beta|\^' | grep 'grub-' | sort -V | tail -1)
         BUILDDIR=${{ github.workspace }}/$GRUB_V
         PACKAGEDIR=$BUILDDIR/grub_package
-        mkdir -p $PACKAGEDIR/DEBIAN
-        
+        mkdir -p $PACKAGEDIR/DEBIAN $PACKAGEDIR/usr/share/doc/mos-grub
+
+        # Add initial copyright to package dir:
+        echo -e "This package contains software under various licenses.\nSee the following files for details:\n" > $PACKAGEDIR/usr/share/doc/mos-grub/copyright
+
         # GRUB
         cd $BUILDDIR
         git clone --branch $GRUB_V --single-branch --depth 1 git://git.savannah.gnu.org/grub.git
@@ -40,6 +43,12 @@ jobs:
         make -j$(nproc)
 
         DESTDIR=$PACKAGEDIR make install -j$(nproc)
+
+        # Add licenses
+        cp "${{ github.workspace }}/LICENSE" "$PACKAGEDIR/usr/share/doc/mos-grub/LICENSE"
+        echo -e "- LICENSE: License for packaging scripts" >> $PACKAGEDIR/usr/share/doc/mos-grub/copyright
+        cp $BUILDDIR/grub/COPYING $PACKAGEDIR/usr/share/doc/mos-grub/LICENSE-grub
+        echo -e "- LICENSE-grub: License for grub components" >> $PACKAGEDIR/usr/share/doc/mos-grub/copyright
 
         cat > $PACKAGEDIR/DEBIAN/control << EOF
         Package: GRUB
