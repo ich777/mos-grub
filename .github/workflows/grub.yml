@@ -17,7 +17,7 @@ jobs:
     - name: Install dependencies
       run: |
         sed -i '/deb\.devuan\.org/ {/contrib/! s/$/ contrib/}' /etc/apt/sources.list
-        apt-get update && apt-get -y install git make pkg-config gcc libfreetype6-dev liblzma-dev libzfslinux-dev
+        apt-get update && apt-get -y install git make pkg-config gcc libfreetype6-dev liblzma-dev
 
     - name: Compile GRUB
       run: |
