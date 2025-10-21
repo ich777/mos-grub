@@ -39,7 +39,7 @@ jobs:
         mkdir -p $BUILDDIR/grub/build
         cd $BUILDDIR/grub/build
 
-        ../configure --prefix=/usr --enable-grub-mkfont --with-platform=efi --enable-liblzma --enable-libzfs
+        ../configure --prefix=/usr --enable-grub-mkfont --with-platform=efi --enable-liblzma
         make -j$(nproc)
 
         DESTDIR=$PACKAGEDIR make install -j$(nproc)
