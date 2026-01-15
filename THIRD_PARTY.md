@@ -4,4 +4,4 @@ This repository builds and packages third-party open-source software.
 The following components are included but remain licensed under their
 original upstream licenses:
 
-- GRUB
+- [GRUB](https://www.gnu.org/software/grub/index.html)
