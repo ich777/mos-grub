@@ -5,7 +5,7 @@
 
 # Install base dependencies
 apt-get update
-apt-get -y install wget curl nano jq procps autoconf-archive
+apt-get -y install wget curl nano jq procps
 
 # Create necessary directories and download and extract GitHub Runner
 GH_RUNNER_V=2.328.0
