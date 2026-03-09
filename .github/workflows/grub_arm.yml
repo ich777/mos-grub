@@ -120,7 +120,7 @@ jobs:
       if: failure()
       run: |
         echo "NOTIFICATION_PRIORITY=1" >> $GITHUB_ENV
-        echo "NOTIFICATION_MESSAGE=Failed to build GRUB ${{ env.ARCH } v${{ env.GRUB_V }}" >> $GITHUB_ENV
+        echo "NOTIFICATION_MESSAGE=Failed to build GRUB ${{ env.ARCH }} v${{ env.GRUB_V }}" >> $GITHUB_ENV
 
     - name: Cleanup & Notification
       if: always()
