@@ -1,0 +1,150 @@
+name: GRUB Compile arm64
+
+on:
+  # Allow to trigger action manually
+  workflow_dispatch:
+
+jobs:
+  build_grub:
+    runs-on: [self-hosted, ARM64]
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 1
+
+    - name: Install dependencies
+      run: |
+        sed -i '/deb\.devuan\.org/ {/contrib/! s/$/ contrib/}' /etc/apt/sources.list
+        apt-get update && apt-get -y install git make pkg-config gcc libfreetype6-dev liblzma-dev autoconf-archive
+
+    - name: Compile GRUB
+      run: |
+        # Get GRUB version and create necessary directories
+        GRUB_V=$(git ls-remote --tags https://git.savannah.gnu.org/git/grub.git | awk -F/ '{print $3}' | grep -Ev 'rc|beta|\^' | grep 'grub-' | sort -V | tail -1)
+        BUILDDIR=${{ github.workspace }}/$GRUB_V
+        PACKAGEDIR=$BUILDDIR/grub_package
+        mkdir -p $PACKAGEDIR/DEBIAN $PACKAGEDIR/usr/share/doc/mos-grub
+
+        # Add initial copyright to package dir:
+        echo -e "This package contains software under various licenses.\nSee the following files for details:\n" > $PACKAGEDIR/usr/share/doc/mos-grub/copyright
+
+        # GRUB
+        cd $BUILDDIR
+        git clone --branch $GRUB_V --single-branch --depth 1 git://git.savannah.gnu.org/grub.git
+        cd $BUILDDIR/grub
+        git checkout $GRUB_V
+        ./bootstrap
+        mkdir -p $BUILDDIR/grub/build
+        cd $BUILDDIR/grub/build
+
+        ../configure --prefix=/usr --enable-grub-mkfont --with-platform=efi --enable-liblzma
+        make -j$(nproc)
+
+        DESTDIR=$PACKAGEDIR make install -j$(nproc)
+
+        # Add licenses
+        cp "${{ github.workspace }}/LICENSE" "$PACKAGEDIR/usr/share/doc/mos-grub/LICENSE"
+        echo -e "- LICENSE: License for packaging scripts" >> $PACKAGEDIR/usr/share/doc/mos-grub/copyright
+        cp $BUILDDIR/grub/COPYING $PACKAGEDIR/usr/share/doc/mos-grub/LICENSE-grub
+        echo -e "- LICENSE-grub: License for grub components" >> $PACKAGEDIR/usr/share/doc/mos-grub/copyright
+
+        ARCH=$(uname -m)
+        case "$ARCH" in
+          aarch64) ARCH="arm64" ;;
+          x86_64)  ARCH="${{ env.ARCH }}" ;;
+          *) exit 1 ;;
+        esac
+
+        cat > $PACKAGEDIR/DEBIAN/control << EOF
+        Package: GRUB
+        Version: ${GRUB_V#*-}-mos
+        Architecture: $ARCH
+        Maintainer: admin@minenet.at
+        Description: Custom GRUB build for MOS
+        EOF
+
+        cd $BUILDDIR
+        chmod -R 755 $PACKAGEDIR
+        dpkg-deb --build grub_package mos-grub_${GRUB_V#*-}_${{ env.ARCH }}.deb
+        md5sum $BUILDDIR/mos-grub_${GRUB_V#*-}_${{ env.ARCH }}.deb | awk '{print $1}' > $BUILDDIR/mos-grub_${GRUB_V#*-}_${{ env.ARCH }}.deb.md5
+
+        echo "GRUB_V=${GRUB_V#*-}
+        BUILDDIR=$BUILDDIR
+        ARCH=$ARCH" >> $GITHUB_ENV
+
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: v${{ env.GRUB_V }}
+        release_name: "GRUB ${{ env.GRUB_V }}"
+        body: |
+          This is the custom Debian package from GRUB for MOS
+
+          ### Package contents:
+          - [GRUB](https://gitweb.git.savannah.gnu.org/gitweb/?p=grub.git&view=view+git+repository) v${{ env.GRUB_V }}
+        draft: false
+        prerelease: false
+
+    - name: Upload deb to Release
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ${{ env.BUILDDIR }}/mos-grub_${{ env.GRUB_V }}_${{ env.ARCH }}.deb
+        asset_name: mos-grub_${{ env.GRUB_V }}_${{ env.ARCH }}.deb
+        asset_content_type: application/vnd.debian.binary-package
+
+    - name: Upload md5 to Release
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ${{ env.BUILDDIR }}/mos-grub_${{ env.GRUB_V }}_${{ env.ARCH }}.deb.md5
+        asset_name: mos-grub_${{ env.GRUB_V }}_${{ env.ARCH }}.deb.md5
+        asset_content_type: text/plain
+
+    - name: Set notification variables on success
+      if: success()
+      run: |
+        echo "NOTIFICATION_PRIORITY=0" >> $GITHUB_ENV
+        echo "NOTIFICATION_MESSAGE=Built GRUB ${{ env.ARCH }} v${{ env.GRUB_V }}" >> $GITHUB_ENV
+
+    - name: Set notification variables on failure
+      if: failure()
+      run: |
+        echo "NOTIFICATION_PRIORITY=1" >> $GITHUB_ENV
+        echo "NOTIFICATION_MESSAGE=Failed to build GRUB ${{ env.ARCH } v${{ env.GRUB_V }}" >> $GITHUB_ENV
+
+    - name: Cleanup & Notification
+      if: always()
+      run: |
+        # Discord notification function
+        discord_push_notification() {
+          if [ $3 -ge 1 ]; then
+            COLOR=16711680
+          else
+            COLOR=65280
+          fi
+
+          data=$(cat <<EOF
+        {
+          "embeds": [{
+            "title": "${1}",
+            "description": "${2}",
+            "color": ${COLOR}
+          }]
+        }
+        EOF
+        )
+          curl -H "Content-Type: application/json" -d "$data" "${{ secrets.DISCORD_WEBHOOK_URL }}"
+        }
+
+        discord_push_notification "${{ github.workflow }}" "${{ env.NOTIFICATION_MESSAGE }}" "${{ env.NOTIFICATION_PRIORITY }}"
+        rm -rf ${{ github.workspace }}/* ${{ github.workspace }}/.*
