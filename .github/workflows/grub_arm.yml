@@ -40,6 +40,8 @@ jobs:
         cd $BUILDDIR/grub/build
 
         ../configure --prefix=/usr --enable-grub-mkfont --with-platform=efi --enable-liblzma
+        # Workaround for race condition on ARM:
+        make -C po -j1
         make -j$(nproc)
 
         DESTDIR=$PACKAGEDIR make install -j$(nproc)
@@ -74,41 +76,22 @@ jobs:
         BUILDDIR=$BUILDDIR
         ARCH=$ARCH" >> $GITHUB_ENV
 
-    - name: Create Release
-      id: create_release
-      uses: actions/create-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - name: Create and Upload Release
+      uses: softprops/action-gh-release@v2
       with:
         tag_name: v${{ env.GRUB_V }}
-        release_name: "GRUB ${{ env.GRUB_V }}"
+        name: "GRUB ${{ env.GRUB_V }}"
         body: |
           This is the custom Debian package from GRUB for MOS
-
           ### Package contents:
           - [GRUB](https://gitweb.git.savannah.gnu.org/gitweb/?p=grub.git&view=view+git+repository) v${{ env.GRUB_V }}
-        draft: false
-        prerelease: false
-
-    - name: Upload deb to Release
-      uses: actions/upload-release-asset@v1
+        files: |
+          ${{ env.BUILDDIR }}/*.deb
+          ${{ env.BUILDDIR }}/*.deb.md5
+        overwrite_files: true
+        fail_on_unmatched_files: false
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ${{ env.BUILDDIR }}/mos-grub_${{ env.GRUB_V }}_${{ env.ARCH }}.deb
-        asset_name: mos-grub_${{ env.GRUB_V }}_${{ env.ARCH }}.deb
-        asset_content_type: application/vnd.debian.binary-package
-
-    - name: Upload md5 to Release
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ${{ env.BUILDDIR }}/mos-grub_${{ env.GRUB_V }}_${{ env.ARCH }}.deb.md5
-        asset_name: mos-grub_${{ env.GRUB_V }}_${{ env.ARCH }}.deb.md5
-        asset_content_type: text/plain
 
     - name: Set notification variables on success
       if: success()
