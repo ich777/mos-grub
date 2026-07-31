@@ -62,7 +62,7 @@ jobs:
         esac
 
         cat > $PACKAGEDIR/DEBIAN/control << EOF
-        Package: GRUB
+        Package: grub
         Version: ${GRUB_V#*-}-mos
         Architecture: $ARCH
         Maintainer: admin@minenet.at
